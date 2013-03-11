@@ -1,0 +1,15 @@
+[submodule "lintnode"]
+	path = lintnode
+	url = https://github.com/davidmiller/lintnode.git
+[submodule "plugins/yasnippet"]
+	path = plugins/yasnippet
+	url = https://github.com/capitaomorte/yasnippet
+[submodule "flymake-easy"]
+	path = flymake-easy
+	url = https://github.com/purcell/flymake-easy.git
+[submodule "flymake-ruby"]
+	path = flymake-ruby
+	url = https://github.com/purcell/flymake-ruby.git
+[submodule "rinari"]
+	path = rinari
+	url = git://github.com/eschulte/rinari.git

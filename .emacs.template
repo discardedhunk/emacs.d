@@ -1,0 +1,891 @@
+;; My screwed up emacs config. Initially 'borrowed' from: github.com/flavorjones/emacs.d
+
+;;;;;;;;;; -*- emacs-lisp -*-
+;;;  emacs init file
+;;;;;;;;;;
+;;;
+;;;  for blocks executed conditionally based on emacs version number
+;;;
+(defun requires-emacs-version (at-least function)
+  (if (>= emacs-major-version at-least)
+      (funcall function)))
+
+
+;;;
+;;;  our external resources
+;;;
+(setq load-path (append '("~/.emacs.d") load-path))
+
+;;;;;;;;;;
+;;;  color themes and font-lock mode setup
+;;;;;;;;;;
+(cond (window-system
+       (require 'color-theme)
+       (load "color-theme-vivid-chalk")
+
+       (add-to-list 'load-path "~/.emacs.d/solarized")
+       (require 'color-theme-solarized)
+       ))
+
+ (add-hook 'font-lock-mode-hook
+           '(lambda ()
+              (unless (string-equal "org-mode" major-mode)
+                ;; in order, match one-line '[TODO ... ]', two-line '[TODO ...\n ... ]'
+                ;; then one-line 'TODO ...'
+                (font-lock-add-keywords
+                 nil ;; mode name
+                 '(("\\[\\(XXX\\|TODO\\|FIXME\\).*\\]\\|\\[\\(XXX\\|TODO\\|FIXME\\).*
+ ?.*\\]\\|\\(XXX\\|TODO\\|FIXME\\).*$"
+                    0 font-lock-warning-face t)))
+              )))
+
+;;;;;;;;;;
+;;; general variables, functions
+;;;;;;;;;;
+(setq jay:i-am-a-mac (boundp 'mac-command-modifier))
+(if jay:i-am-a-mac (setq mac-command-modifier 'meta))
+
+;;(line-number-mode t)
+(global-linum-mode t)
+
+(transient-mark-mode t)
+(setq default-major-mode 'text-mode)
+(put 'downcase-region 'disabled nil)
+(put 'upcase-region 'disabled nil)
+(display-time)
+(set-input-mode nil nil t)       ; so we can use ALT as a META key (?)
+(setq-default tab-width 2)
+(setq-default indent-tabs-mode nil)
+(setq-default js-indent-level 2)
+(setq-default c-basic-offset 2)
+;; Always end a file with a newline
+(setq-default require-final-newline nil)
+(setq-default line-spacing 3)
+(when window-system (mwheel-install)) ;; enable wheelmouse support by default
+
+;;; turn off all the decorations and gui-helpful bullshit
+(if (fboundp 'tool-bar-mode) (tool-bar-mode -1))
+(if (fboundp 'menu-bar-mode) (menu-bar-mode -1))
+;;(set-scroll-bar-mode 'right) ;; but i like the scrollbar. having an analog indicator of position in a buffer is good.
+
+(global-font-lock-mode t)
+(if (fboundp 'menu-bar-enable-clipboard) (menu-bar-enable-clipboard))
+(ido-mode)
+(set-fill-column 100) ;; yay widescreen
+(auto-compression-mode 1) ;; allow opening of .gz (et al) files directly
+
+(setq x-select-enable-clipboard t)
+(setq interprogram-paste-function 'x-selection-value)
+
+(setq max-specpdl-size 1000000) ;; for byte-compiling js2-mode and mumamo-do-fontify
+(setq max-lisp-eval-depth 10000) ;; for mumamo-do-fontify (!?)
+
+(global-set-key [home]     'beginning-of-buffer) ; [Home] 
+(global-set-key [end]      'end-of-buffer)       ; [End] 
+
+(add-to-list 'load-path "~/.emacs.d/")
+(require 'auto-complete-config)
+(add-to-list 'ac-dictionary-directories "~/.emacs.d/ac-dict")
+(ac-config-default)
+; Use dictionaries by default
+(setq-default ac-sources (add-to-list 'ac-sources 'ac-source-dictionary))
+(global-auto-complete-mode t)
+; Start auto-completion after 2 characters of a word
+(setq ac-auto-start 2)
+; case sensitivity is important when finding matches
+(setq ac-ignore-case nil)
+
+;; save desktop only when in windowing mode, to avoid getting prompted for
+;; saving by 'emacs -nw', which is what my EDITOR envvar is set to (which
+;; is used by git, svn, etc.)
+(when window-system
+  (desktop-save-mode 1)
+  (run-with-idle-timer 30 t (lambda () (desktop-save-in-desktop-dir)))
+  )
+
+;;;  let's try global-auto-revert in case i need to pair program
+;;;  also mo'better auto-save behavior
+(global-auto-revert-mode 1)
+(setq auto-save-timeout 10)
+(setq auto-save-visited-file-name t)
+
+;;  move autosave files somewhere out of the directory path
+;;  http://amitp.blogspot.com/2007/03/emacs-move-autosave-and-backup-files.html
+(defvar user-temporary-file-directory "~/.emacs.d/auto-save")
+(make-directory user-temporary-file-directory t)
+(setq backup-by-copying t)
+(setq backup-directory-alist
+      `(("." . ,user-temporary-file-directory)
+        (,tramp-file-name-regexp nil)))
+(setq auto-save-list-file-prefix
+      (concat user-temporary-file-directory ".auto-saves-"))
+(setq auto-save-file-name-transforms
+      `((".*" ,user-temporary-file-directory t)))
+
+
+;;;;;;;;;;
+;;;  miscellaneous file types linked to modes
+;;;;;;;;;;
+(load "rnc-mode") ;;;  relax-ng compact mode
+(setq auto-mode-alist (append '(
+                                ("\\.xml$" . xml-mode)
+                                ("\\.mxml$" . xml-mode)
+                                ("\\.rnc$" . rnc-mode)
+                                ("\\.html$" . html-mode)
+                                ("\\.css$" . css-mode)
+                                ("\\.sass$" . sass-mode)
+                                ("\\.scss$" . sass-mode)
+                                ("\\.as$" . java-mode) ; actionscript
+                                ("\\.m$" . matlab-mode) ; actionscript
+                                )
+                              auto-mode-alist))
+(setq auto-mode-alist
+      (append '(("\\.c$"  . c-mode)     ; to edit C code
+                ("\\.h$"  . c-mode)     ; to edit C code
+                ("\\.ec$" . c-mode)
+                ("\\.php$" . c-mode)
+                ) auto-mode-alist))
+(setq auto-mode-alist
+      (append
+       '(("\\.cpp\\'" . c++-mode))
+       '(("\\.h\\'" . c++-mode))
+       '(("\\.inl\\'" . c++-mode))
+       '(("\\.dox\\'" . c++-mode))
+       auto-mode-alist))
+(setq auto-mode-alist
+      (append
+       '(("\\.cmake\\'" . cmake-mode))
+       '(("CMakeLists\\.txt\\'" . cmake-mode))
+       auto-mode-alist))
+(setq auto-mode-alist
+      (append
+       '(("\\.rb$" . ruby-mode)
+         ("\\.cap$" . ruby-mode)
+         ("\\.rake$" . ruby-mode)
+         ("Rakefile" . ruby-mode)
+         ("Thorfile" . ruby-mode)
+         ("\\.thor$" . ruby-mode)
+         ("Gemfile$" . ruby-mode)
+         ("Capfile$" . ruby-mode)
+         ("\\.gemspec$" . ruby-mode)
+         )
+       auto-mode-alist))
+(setq auto-mode-alist (cons '("\\.F$" . fortran-mode) auto-mode-alist))
+(setq auto-mode-alist (cons '("\\.hf$" . fortran-mode) auto-mode-alist))
+(setq auto-mode-alist (cons '("\\.inc$" . fortran-mode) auto-mode-alist))
+(add-to-list 'auto-mode-alist '("\\.gob\\'" . c-mode))
+(setq auto-mode-alist (append (list (cons "\\.pl$" 'perl-mode))
+                              auto-mode-alist))
+(setq auto-mode-alist (append '(("\\.el$" . emacs-lisp-mode)
+                                ("\\.cl$" . lisp-mode)
+                                ("\\.lisp$" . lisp-mode))
+                              auto-mode-alist))
+
+;;;;;;;;;;
+;;;  some random stuff.
+;;;;;;;;;;
+(autoload 'ediff "ediff" nil t)         ;  cool diff mode
+;;(autoload 'flame "flame" nil t)         ;  automated flaming
+(autoload 'longlines-mode "longlines" nil t)
+
+;;;;;;;;;;
+;;;  minibuffer resizes dynamically
+;;;;;;;;;;
+(if (load "rsz-mini" t) (resize-minibuffer-mode))
+
+;;;;;;;;;;
+;;; key bindings
+;;;;;;;;;;
+(global-set-key "\C-c\C-k" 'copy-region-as-kill)
+(global-set-key "\C-x\C-w" 'kill-rectangle)
+(global-set-key "\C-x\C-y" 'yank-rectangle)
+(global-set-key "\C-cg" 'goto-line)
+(global-set-key "\C-cr" 'replace-regexp)
+(global-set-key "\er" 'query-replace-regexp)
+(global-set-key "\C-c\C-a" 'auto-fill-mode)
+                                        ; (global-set-key "\C-cd" 'spell-buffer)
+                                        ; (global-set-key "\C-cj" 'justify-current-line)
+(global-set-key "\C-cj" 'join-line)
+(global-set-key "\C-c\t" 'tab-to-tab-stop)
+(global-set-key "\C-x\C-q" 'toggle-read-only)
+(global-set-key "\C-co" 'my-find-other-file)
+
+;;;  binding for opening a new line below point without splitting the line
+(global-set-key [\C-return] [?\C-a ?\C-n ?\C-o tab])
+
+;;;
+;;; frame-related bindings
+;;;
+(global-set-key "\C-c\C-fo" 'other-frame)
+(global-set-key "\C-c\C-fn" 'new-frame)
+(global-set-key "\C-c\C-fd" 'delete-frame)
+(global-set-key "\C-c\C-fs" 'speedbar)
+
+(global-set-key "\C-c;" 'comment-or-uncomment-region)
+
+;;;
+;;;  these so we can resize buffer windows using the mouse
+;;;
+;;(require 'mldrag)
+;;(global-set-key [mode-line down-mouse-1] 'mldrag-drag-mode-line)
+;;(global-set-key [vertical-line down-mouse-1] 'mldrag-drag-vertical-line)
+;;(global-set-key [vertical-scroll-bar S-down-mouse-1] 'mldrag-drag-vertical-line)
+
+;;  prepend or replace a cons cell with given key
+(defun my-unique-prepend (key val assoc)
+  "Returns a copy of assoc with cons cell (key . val)."
+  (let ((CELL (assq key assoc)))
+    (cond ((consp CELL) (setcdr CELL val))
+          ((push '(key . val) assoc)))))
+
+;;;;;;;;;;
+;;;  text-mode
+;;;;;;;;;;
+(add-hook 'text-mode-hook
+          (function
+           (lambda ()
+             (local-set-key "\C-c\C-l" 'longlines-mode)
+             )))
+
+;;;
+;;;  treetop-mode
+;;;
+(autoload 'treetop-mode "treetop" "Treetop mode." t)
+(add-to-list 'auto-mode-alist '("\\.treetop$"  . treetop-mode))
+
+;;;
+;;;  markdown-mode
+;;;
+(autoload 'markdown-mode "markdown-mode" nil t)
+(add-to-list 'auto-mode-alist '("\\.markdown$"  . markdown-mode))
+(add-to-list 'auto-mode-alist '("\\.mdml$"      . markdown-mode))
+(add-to-list 'auto-mode-alist '("\\.md$"        . markdown-mode))
+(add-to-list 'auto-mode-alist '("\\.slidedown$" . markdown-mode))
+(add-hook 'markdown-mode-hook
+          (function
+           (lambda ()
+             (local-set-key "\C-c\C-l" 'longlines-mode)
+             )))
+
+;;;
+;;;  css-mode
+;;;
+(add-hook 'css-mode-hook
+          '(lambda ()
+             (setq css-indent-offset 2)
+             ))
+
+;;;;;;;;;;
+;;;  common c modes
+;;;;;;;;;;
+(add-hook 'c-mode-common-hook
+          (function
+           (lambda ()
+
+;;; shall we use tabs or spaces? t is tabs, nil is spaces.
+             (setq indent-tabs-mode nil) ;;; nil forces spaces always
+;;; set tabbing convention and display
+             (c-set-style "stroustrup")
+             (setq c-basic-offset 2)
+;;; make inline function definitions indent like i want
+             (let ((CELL (assq 'inline-open c-offsets-alist)))
+               (cond ((consp CELL) (setcdr CELL 0))
+                     ((push '(inline-open . 0) c-offsets-alist))))
+             (let ((CELL (assq 'inher-intro c-offsets-alist)))
+               (cond ((consp CELL) (setcdr CELL 0))
+                     ((push '(inher-intro . 0) c-offsets-alist))))
+
+             (auto-fill-mode)
+             (set-fill-column 80)
+
+             ;; c++-style comments
+             (fset 'my-cpp-comment-wide
+                   [?\C-o tab ?/ ?/ escape ?9 ?* return tab ?/ ?/
+                          return tab ?/ ?/ escape ?9 ?* ?\C-p ?  ? ])
+             (fset 'my-cpp-comment
+                   [?\C-o tab ?/ ?/ return tab ?/ ?/ return tab ?/ ?/
+                          ?\C-p ?  ? ])
+             ;; c-style comments
+             (fset 'my-c-comment-wide
+                   [?\C-o tab ?/ escape ?1 ?0 ?* return ?* tab
+                          return escape ?1 ?0 ?* ?/ ?\C-p ?  ? ])
+             (fset 'my-c-comment
+                   [?\C-o tab ?/ ?* return ?* tab return ?* ?/
+                          ?\C-p ?  ? ])
+
+             (fset 'my-c-dox-comment
+                   [?\C-o tab ?/ ?* ?* return ?* tab return ?*
+                          ?/ ?\C-p ?  ? ])
+             (local-set-key "\C-c\C-v" 'my-c-dox-comment)
+
+;;; to override c-electric-star
+             (local-set-key "*" 'self-insert-command )
+
+             (hs-minor-mode 1)
+
+             )))
+
+;;;;;;;;;;
+;;; cc-mode (c-mode)
+;;;;;;;;;;
+(add-hook 'c-mode-hook
+          (function
+           (lambda ()
+             (local-set-key "\C-cc" 'my-c-comment-wide)
+             (local-set-key "\C-cv" 'my-c-comment))))
+
+;;;;;;;;;;
+;;;  c++-mode
+;;;;;;;;;;
+(add-hook 'c++-mode-hook
+          (function
+           (lambda ()
+             (local-set-key "\C-cc" 'my-cpp-comment-wide)
+             (local-set-key "\C-cv" 'my-cpp-comment))))
+
+
+;;;;;;;;;;
+;;;  cmake-mode
+;;;;;;;;;;
+(add-hook 'cmake-mode-hook
+          (function
+           (lambda ()
+             ;;
+             ;; this rocking one-line command makes '_' a word delimiter
+             ;; just like in cc-mode
+             ;;
+             (modify-syntax-entry ?_  "_" )
+
+             (fset 'my-perl-comment
+                   [15 32 escape 49 48 35 tab return 32 35 tab return
+                       32 escape 49 48 35 tab 16 32 32])
+             (fset 'my-perl-comment2
+                   (read-kbd-macro
+                    "C-o TAB # RET TAB # RET TAB # C-p C-e 2*SPC"))
+             (local-set-key "\C-cc" 'my-perl-comment)
+             (local-set-key "\C-cv" 'my-perl-comment2)
+             )))
+
+(add-to-list 'load-path "~/.emacs.d/flymake-easy")
+(require 'flymake-easy)
+
+
+;;;;;;;;;;
+;;;  ruby-mode
+;;;;;;;;;;
+;;;
+;;;  http://www.emacswiki.org/cgi-bin/wiki/FlymakeRuby
+;;;
+;; (add-to-list 'load-path "~/.emacs.d/flymake-ruby")
+;; (require 'flymake-ruby)
+;; (add-hook 'ruby-mode-hook 'flymake-ruby-load)
+;; ;;(require 'flymake)
+;; (defun flymake-ruby-init ()
+;;   (let* ((temp-file   (flymake-init-create-temp-buffer-copy
+;;                        'flymake-create-temp-inplace))
+;;          (local-file  (file-relative-name
+;;                        temp-file
+;;                        (file-name-directory buffer-file-name))))
+;;     (list "ruby" (list "-c" local-file))))
+;; (push '(".+\\.rb$" flymake-ruby-init) flymake-allowed-file-name-masks)
+;; (push '("Rakefile$" flymake-ruby-init) flymake-allowed-file-name-masks)
+;; (push '("^\\(.*\\):\\([0-9]+\\): \\(.*\\)$" 1 2 nil 3) flymake-err-line-patterns)
+(add-hook 'ruby-mode-hook
+          (function
+           (lambda ()
+             (fset 'my-ruby-comment
+                   [?\C-o tab escape ?1 ?0 ?# return tab ?# ?  ?  return tab escape ?1 ?0 ?# ?\C-p])
+             (fset 'my-ruby-comment2
+                   [?\C-o tab ?# return tab ?# ?  ?  return tab ?# ?\C-p ?\C-e])
+             (local-set-key "\C-cc" 'my-ruby-comment)
+             (local-set-key "\C-cv" 'my-ruby-comment2)
+             (setq case-fold-search t) ;; this should be in ruby-mode, imho.
+             (local-set-key "\t" 'indent-for-tab-command) ;; this should be in ruby-mode, imho.
+             (setq ruby-deep-indent-paren nil)
+
+             ;; Don't want flymake mode for ruby regions in rhtml files and also on read only files
+             (if (and (not (null buffer-file-name)) (file-writable-p buffer-file-name))
+                 (flymake-mode))
+             )))
+
+;;;;;;;;;;
+;;;  sql-mode
+;;;;;;;;;;
+(add-hook 'sql-mode-hook
+          (function
+           (lambda ()
+             (fset 'my-sql-comment
+                   [?\C-o tab escape ?1 ?0 ?- return tab ?- ?- ?- ?  ?  return tab escape ?1 ?0 ?- ?\C-p])
+             (fset 'my-sql-comment2
+                   [?\C-o tab ?- ?- ?- return tab ?- ?- ?- ?  ?  return tab ?- ?- ?- ?\C-p ?\C-e])
+             (local-set-key "\C-cc" 'my-sql-comment)
+             (local-set-key "\C-cv" 'my-sql-comment2)
+             )))
+
+;;;;;;;;;;
+;;;  java mode
+;;;;;;;;;;
+(add-hook 'java-mode-hook
+          (function
+           (lambda ()
+             (local-set-key "\C-cc" 'my-cpp-comment-wide)
+             (local-set-key "\C-cv" 'my-cpp-comment))))
+
+
+;;;;;;;;;;
+;;;  fortran mode
+;;;;;;;;;;
+(setq fortran-mode-hook
+      '(lambda ()
+         (fortran-auto-fill-mode 72)
+         (abbrev-mode t)
+         (setq
+          fortran-comment-region "c"
+          fortran-comment-indent-style 'relative
+          fortran-blink-matching-if t
+          fortran-do-indent 2
+          fortran-if-indent 2
+          fortran-structure-indent 2
+          fortran-comment-line-extra-indent -2
+          fortran-continuation-indent 5
+          fortran-continuation-string ".")
+         (fset 'fortranchow
+               [67 32 32 32 67 104 111 119 32 114 117 108 101 115 return 42 tab escape 49 48 42])
+         (fset 'my-fortran-comment1
+               [15 escape 49 48 42 return 42 return escape 49 48 42 16
+                   32 32])
+         (fset 'my-fortran-comment2
+               [15 42 32 escape 49 48 42 tab return 42 32 42 tab
+                   return 42 32 escape 49 48 42 tab 16 32 32])
+         (local-set-key "\C-cp" 'fortranchow)
+         (local-set-key "\C-cc" 'my-fortran-comment1)
+         (local-set-key "\C-cv" 'my-fortran-comment2)
+;;;        (cond (window-system
+;;;               (setq hilit-mode-enable-list  '(fortran-mode)
+;;;                     hilit-background-mode   'light
+;;;                     hilit-auto-highlight    t
+;;;                     hilit-inhibit-hooks     nil
+;;;                     hilit-inhibit-rebinding nil)
+;;;               (require 'hilit19)
+;;;               ))
+
+         ;;
+         ;; this rocking one-line command makes '_' a word delimiter
+         ;; just like in cc-mode
+         ;;
+         (modify-syntax-entry ?_  "_" )
+
+         ))
+
+
+;;;;;;;;;;
+;;; perl-mode
+;;;;;;;;;;
+(autoload 'perl-mode "perl-mode" "Perl mode." t)
+(add-hook 'perl-mode-hook
+          (function
+           (lambda ()
+             (setq
+              perl-tab-to-comment nil
+              perl-indent-level 2
+              perl-continued-brace-offset -2
+              perl-label-offset 0
+              )
+             (fset 'my-perl-comment
+                   [15 32 escape 49 48 35 tab return 32 35 tab return
+                       32 escape 49 48 35 tab 16 32 32])
+             (fset 'my-perl-comment2
+                   (read-kbd-macro
+                    "C-o TAB # RET TAB # RET TAB # C-p C-e 2*SPC"))
+             (local-set-key "\C-cc" 'my-perl-comment)
+             (local-set-key "\C-cv" 'my-perl-comment2)
+             )))
+
+;;;;;;;;;;
+;;;  sh-mode
+;;;;;;;;;;
+(add-hook 'sh-mode-hook
+          (function
+           (lambda ()
+             (fset 'my-sh-comment
+                   [?# return ?# return ?# return ?\C-p ?\C-p ?\C-e ?  ? ])
+             (local-set-key "\C-cv" 'my-sh-comment)
+             )))
+
+
+;;;;;;;;;;
+;;;  lisps
+;;;;;;;;;;
+(defun my-lisp-mode-hook ()
+  (fset 'my-lisp-comment
+        [15 escape 49 48 59 return 59 59 59 return escape
+            49 48 59 16 32 32])
+  (fset 'my-lisp-comment2
+        [?\C-o tab ?\; ?\; ?\; return tab ?\; ?\; ?\; return tab ?\; ?\; ?\; ?\C-p ?  ? ])
+  (local-set-key "\C-cc" 'my-lisp-comment)
+  (local-set-key "\C-cv" 'my-lisp-comment2)
+  )
+(add-hook 'emacs-lisp-mode-hook
+          (function my-lisp-mode-hook))
+(add-hook 'lisp-mode-hook
+          (function my-lisp-mode-hook))
+
+;;;;;;;;;;
+;;;  outline mode
+;;;;;;;;;;
+(add-hook 'outline-mode-hook
+          (function
+           (lambda ()
+             (hide-body)             ; hide everything except headings
+             )))
+
+;;;;;;;;;;
+;;;  hideshow mode
+;;;;;;;;;;
+(add-hook 'hs-minor-mode-hook
+          (function
+           (lambda ()
+             (setq hs-hide-comments-when-hiding-all nil)
+             (setq hs-isearch-open t)
+             (setq hs-show-hidden-short-form nil)
+             (local-set-key "\C-cl" 'hs-hide-level)
+             )))
+
+;;;;;;;;;;
+;;;  scheme mode
+;;;;;;;;;;
+(add-hook 'scheme-mode-hook
+          (function
+           (lambda ()
+             (fset 'my-scheme-comment
+                   [15 escape 49 48 59 return 59 59 59 return escape
+                       49 48 59 16 32 32])
+             (local-set-key "\C-cc" 'my-scheme-comment)
+             )))
+
+;;;;;;;;;;
+;;;  tex mode
+;;;;;;;;;;
+(add-hook 'tex-mode-hook
+          (function
+           (lambda ()
+             (setq tex-dvi-view-command "xdvi")
+             (fset 'my-tex-comment-wide
+                   [?\C-o tab ?% escape ?9 ?* return tab ?%
+                          return tab ?% escape ?9 ?* ?\C-p ?  ? ])
+             (fset 'my-tex-comment
+                   [?\C-o tab ?% return tab ?% return tab ?%
+                          ?\C-p ?  ? ])
+             (local-set-key "\C-cc" 'my-tex-comment-wide)
+             (local-set-key "\C-cv" 'my-tex-comment)
+             )))
+
+
+;;;;;;;;;;
+;;;  latex mode
+;;;;;;;;;;
+(add-hook 'latex-mode-hook
+          (function
+           (lambda ()
+             (setq tex-command "pdflatex")
+             )))
+
+;;;;;;;;;;
+;;;  html mode
+;;;;;;;;;;
+(add-hook 'html-mode-hook
+          (function (lambda ()
+                      (local-set-key "\C-c\C-i" 'indent-relative) ;; for embedded js
+                      )))
+
+;;;;;;;;;;
+;;;  my ruler
+;;;;;;;;;;
+(defvar my-column-ruler
+  (concat
+   "        10        20        30        40"
+   "        50        60        70        80        90       100\n"
+   "    +    |    +    |    +    |    +    |\n"
+   "    +    |    +    |    +    |    +    |    +    |    +    |\n")
+  "*String displayed above current line by \\[my-column-ruler].")
+
+(defun my-column-ruler ()
+  "Inserts a column ruler momentarily above current line, till next keystroke.
+The ruler is defined by the value of my-column-ruler.
+The key typed is executed unless it is SPC."
+  (interactive)
+  (momentary-string-display
+   my-column-ruler (save-excursion (beginning-of-line) (point))
+   nil "Type SPC or any command to erase ruler."))
+
+(global-set-key "\C-c\C-r" 'my-column-ruler)
+
+
+;;;;;;;;;;
+;;;  these in case I am on an XON/OFF or really, really dumb terminal
+;;;;;;;;;;
+;(global-set-key "\C-cs" 'isearch-forward-regexp)
+;(global-set-key "\C-\\" 'isearch-repeat-forward-regexp)
+;(global-set-key "\C-c\C-c " 'set-mark-command)
+
+;;;;;;;;;;
+;;;  my-find-other-file is intended to help browse lots of source files
+;;;  my-load-if-exists is a helper function
+;;;;;;;;;;
+(defun my-load-if-exists (list)
+  (cond (list
+         (cond ((file-exists-p (car list))
+                (find-file-other-window (car list)))
+               ((my-load-if-exists (cdr list)))))
+        ((error "Could not find a matching file."))))
+
+(defun my-find-other-file ()
+  "Given a source code file, will load the header file into a new buffer."
+  (interactive)
+  (let ((curbuf (buffer-name)))
+    (cond ((string-match "\.cpp$" curbuf)
+           (my-load-if-exists (list (replace-match ".h" t t curbuf))))
+          ((string-match "\.c$" curbuf)
+           (my-load-if-exists (list (replace-match ".h" t t curbuf))))
+          ((string-match "\.inl$" curbuf)
+           (my-load-if-exists (list (replace-match ".h" t t curbuf))))
+          ((string-match "\.h$" curbuf)
+           (my-load-if-exists (list (replace-match ".cpp" t t curbuf)
+                                    (replace-match ".c" t t curbuf)
+                                    (replace-match ".inl" t t curbuf)))
+           ))))
+
+
+;;;;;;;;;;
+;;;  ripped off from yaroslav
+;;;;;;;;;;
+(defun yic-ignore (str)
+  (or
+   ;;buffers I don't want to switch to
+   (string-match "\\*Buffer List\\*" str)
+   (string-match "^TAGS" str)
+   (string-match "^\\*Messages\\*$" str)
+   (string-match "^\\*Completions\\*$" str)
+   (string-match "^ " str)
+
+   ;;Test to see if the window is visible on an existing visible frame.
+   ;;Because I can always ALT-TAB to that visible frame, I never want to
+   ;;Ctrl-TAB to that buffer in the current frame.  That would cause
+   ;;a duplicate top-level buffer inside two frames.
+   (memq str
+         (mapcar
+          (lambda (x)
+            (buffer-name
+             (window-buffer
+              (frame-selected-window x))))
+          (visible-frame-list)))
+   ))
+
+(defun yic-next (ls)
+  "Switch to next buffer in ls skipping unwanted ones."
+  (let* ((ptr ls)
+         bf bn go
+         )
+    (while (and ptr (null go))
+      (setq bf (car ptr)  bn (buffer-name bf))
+      (if (null (yic-ignore bn))        ;skip over
+          (setq go bf)
+        (setq ptr (cdr ptr))
+        )
+      )
+    (if go
+        (switch-to-buffer go))))
+
+(defun yic-prev-buffer ()
+  "Switch to previous buffer in current window."
+  (interactive)
+  (yic-next (reverse (buffer-list))))
+
+(defun yic-next-buffer ()
+  "Switch to the other buffer (2nd in list-buffer) in current window."
+  (interactive)
+  (bury-buffer (current-buffer))
+  (yic-next (buffer-list)))
+
+;; (global-set-key [\C-tab] 'yic-next-buffer)
+;; (global-set-key [\S-tab] 'yic-prev-buffer)
+
+;;;;;;;;;;
+;;;  some nice font shit
+;;;;;;;;;;
+(cond (window-system
+       (defun what-font ()
+         (interactive)
+         (message (frame-parameter nil 'font)))
+
+       (requires-emacs-version 23
+                               '(lambda ()
+                                  (setq jay:font-face nil)
+                                  (setq jay:font-size nil)
+                                  (setq jay:font-bold-p nil)
+
+                                  (defun jay:set-font-face (face)
+                                    (interactive "MFont name: ")
+                                    (setq jay:font-face face)
+                                    (jay:enact-font))
+
+                                  (defun jay:set-font-size (size)
+                                    (interactive "nFont size: ")
+                                    (setq jay:font-size size)
+                                    (jay:enact-font))
+
+                                  (defun jay:set-font-bold (boldp)
+                                    (interactive)
+                                    (setq jay:font-bold-p boldp)
+                                    (jay:enact-font))
+
+                                  (defun jay:enact-font ()
+                                    (if (and jay:font-face jay:font-size)
+                                        (let* ((font (concat jay:font-face "-" (number-to-string jay:font-size))))
+                                          (if jay:font-bold-p
+                                              (setq font (concat font ":bold")))
+                                          (set-default-font font)
+                                          (prin1 font))))
+
+                                  (defun jay:modify-font-size (increment)
+                                    (setq jay:font-size (+ jay:font-size increment))
+                                    (jay:enact-font))
+
+                                  (defun jay:increase-font-size ()
+                                    (interactive)
+                                    (jay:modify-font-size 1))
+
+                                  (defun jay:decrease-font-size ()
+                                    (interactive)
+                                    (jay:modify-font-size -1))
+
+                                  (defun jay:toggle-font-bold ()
+                                    (interactive)
+                                    (if jay:font-bold-p
+                                        (jay:set-font-bold nil)
+                                      (jay:set-font-bold t)))
+
+                                  (defun jay:set-theme (theme)
+                                    (funcall theme)
+                                    (setq jay:theme theme))
+
+                                  (defun jay:next-color-theme ()
+                                    (interactive)
+                                    (if (eq jay:theme 'color-theme-solarized-dark)
+                                        (jay:set-theme 'color-theme-solarized-light)
+                                      (if (eq jay:theme 'color-theme-solarized-light)
+                                          (jay:set-theme 'color-theme-vivid-chalk)
+                                        (jay:set-theme 'color-theme-solarized-dark))))
+
+                                  (global-set-key [?\C-=] 'jay:next-color-theme)
+                                  (global-set-key [?\C-+] 'jay:increase-font-size)
+                                  (global-set-key [?\C--] 'jay:decrease-font-size)
+                                  (global-set-key [?\C-_] 'jay:toggle-font-bold)
+
+                                  (jay:set-theme 'color-theme-solarized-dark)
+                                  (jay:set-font-size 13)
+                                  (jay:set-font-face "DejaVu Sans Mono")
+                                  (jay:set-font-bold t)
+                                  )
+                               )
+       ))
+
+;;;
+;;;  camelCase
+;;;
+(autoload 'camelCase-mode "camelCase-mode" nil t)
+(add-hook 'find-file-hook '(lambda () (camelCase-mode 1))) ; all files. (all buffers?)
+
+;; Interactively Do Things (highly recommended, but not strictly required)
+(require 'ido)
+(ido-mode t)
+     
+;; Rinari
+(add-to-list 'load-path "~/.emacs.d/rinari")
+(require 'rinari)
+
+(setq rinari-minor-mode-prefixes (list "'"))
+(require 'rinari)
+(require 'ruby-compilation-rspec)
+(global-set-key (kbd "C-x C-M-f") 'find-file-in-project) ;; optional
+
+(autoload 'js2-mode "js2" nil t)
+(add-to-list 'auto-mode-alist '("\\.js$" . js2-mode))
+
+(add-to-list 'load-path "~/.emacs.d/plugins/yasnippet")
+;; Load the library
+(require 'yasnippet)
+(yas-global-mode 1)
+;; Load the snippet files themselves
+(yas/load-directory "~/.emacs.d/plugins/yasnippet/snippets/text-mode")
+;; Let's have snippets in the auto-complete dropdown
+(add-to-list 'ac-sources 'ac-source-yasnippet)
+
+(add-to-list 'load-path "~/.emacs.d/lintnode")
+(require 'flymake-jslint)
+;; Make sure we can find the lintnode executable
+(setq lintnode-location "~/.emacs.d/lintnode")
+;; JSLint can be... opinionated
+(setq lintnode-jslint-excludes (list 'nomen 'undef 'plusplus 'onevar 'white))
+;; Start the server when we first open a js file and start checking
+(add-hook 'js-mode-hook
+          (lambda ()
+            (lintnode-hook)))
+
+(add-to-list 'load-path "~/emacs/minor-modes")
+;; Nice Flymake minibuffer messages
+(require 'flymake-cursor)
+
+(add-hook 'js-mode-hook
+          (lambda ()
+            ;; Scan the file for nested code blocks
+            (imenu-add-menubar-index)
+            ;; Activate the folding mode
+            (hs-minor-mode t)))
+
+;; Show-hide
+(global-set-key (kbd "") 'hs-show-block)
+(global-set-key (kbd "") 'hs-show-all)
+(global-set-key (kbd "") 'hs-hide-block)
+(global-set-key (kbd "") 'hs-hide-all)
+
+(require 'js-comint)
+;; Use node as our repl
+(setq inferior-js-program-command "node")
+ 
+(setq inferior-js-mode-hook
+      (lambda ()
+        ;; We like nice colors
+        (ansi-color-for-comint-mode-on)
+        ;; Deal with some prompt nonsense
+        (add-to-list 'comint-preoutput-filter-functions
+                     (lambda (output)
+                       (replace-regexp-in-string ".*1G\.\.\..*5G" "..."
+                     (replace-regexp-in-string ".*1G.*3G" "&gt;" output))))))
+
+;; choose SSH as our preferred tramping method
+(setq tramp-default-method "ssh")
+
+;; set our proxy if we're not at work.
+;; (setq tramp-default-proxies-alist '())
+;; (add-to-list
+;;  'tramp-default-proxies-alist
+;;  '( "\\.spotify.net" nil "/ssh:sptunnel:"))
+;; (add-to-list
+;;  'tramp-default-proxies-alist
+;;  '( "sptunnel" nil nil))
+
+(custom-set-variables
+  ;; custom-set-variables was added by Custom.
+  ;; If you edit it by hand, you could mess it up, so be careful.
+  ;; Your init file should contain only one such instance.
+  ;; If there is more than one, they won't work right.
+ '(js2-auto-indent-p nil)
+ '(js2-bounce-indent-p t)
+ '(js2-cleanup-whitespace t))
+(custom-set-faces
+  ;; custom-set-faces was added by Custom.
+  ;; If you edit it by hand, you could mess it up, so be careful.
+  ;; Your init file should contain only one such instance.
+  ;; If there is more than one, they won't work right.
+ )
